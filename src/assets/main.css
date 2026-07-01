@@ -1,0 +1,190 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400;1,600&family=Jost:wght@200;300;400;500&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  cursor: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+::-webkit-scrollbar { display: none; width: 0; height: 0; }
+* { -ms-overflow-style: none; scrollbar-width: none; }
+
+body, html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Jost', sans-serif;
+  background-color: #f0f4f8;
+  color: #1a1a2e;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.noise-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0.04;
+  background-image: url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+}
+
+.cursor-dot,
+.cursor-outline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  z-index: 9999;
+  pointer-events: none;
+  mix-blend-mode: difference;
+}
+
+.cursor-dot {
+  width: 5px;
+  height: 5px;
+  background-color: #fff;
+  transition: opacity 0.3s;
+}
+
+.cursor-outline {
+  width: 35px;
+  height: 35px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  transition: width 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              height 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              background-color 0.3s ease;
+}
+
+body.cursor-hover .cursor-outline {
+  width: 70px;
+  height: 70px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: transparent;
+}
+
+#loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #f0f4f8;
+  z-index: 5000;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  transition: opacity 1.5s ease;
+}
+
+.loader-text {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 2rem;
+  letter-spacing: 0.1em;
+  font-style: italic;
+  animation: pulseText 2s infinite alternate;
+}
+
+.loader-line {
+  width: 1px;
+  height: 50px;
+  background: #1a1a2e;
+  margin-top: 20px;
+  animation: growLine 2s ease infinite;
+  transform-origin: top;
+}
+
+@keyframes pulseText {
+  0% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+@keyframes growLine {
+  0% { transform: scaleY(0); }
+  50% { transform: scaleY(1); }
+  100% { transform: scaleY(0); transform-origin: bottom; }
+}
+
+#toast {
+  position: fixed;
+  bottom: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a2e;
+  color: white;
+  padding: 15px 30px;
+  border-radius: 30px;
+  font-size: 0.9rem;
+  z-index: 9999;
+  transition: bottom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  max-width: 90vw;
+  text-align: center;
+}
+
+#toast.show {
+  bottom: 40px;
+}
+
+/* =========================================
+   MOBILE RESPONSIVE
+   ========================================= */
+
+@media (max-width: 768px) {
+  /* Hide custom cursor on mobile, use default */
+  *, *::before, *::after {
+    cursor: auto !important;
+  }
+
+  .cursor-dot,
+  .cursor-outline {
+    display: none !important;
+  }
+
+  body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    touch-action: pan-y;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .noise-overlay {
+    opacity: 0.02;
+  }
+
+  .loader-text {
+    font-size: 1.4rem;
+  }
+
+  #toast {
+    bottom: -100px;
+  }
+
+  #toast.show {
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+
+  #page-main {
+    overflow-y: auto;
+    padding-bottom: 80px;
+  }
+
+  .overlay-page {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 80px;
+  }
+}

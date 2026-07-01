@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereal Botanical | Интерактивная Флористика</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400;1,600&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+    
+    <style>
+        /* =========================================
+           1. БАЗА, АНТИ-ВЫДЕЛЕНИЕ И СГЛАЖИВАНИЕ
+        ========================================= */
+        * { 
+            margin: 0; padding: 0; box-sizing: border-box; cursor: none; 
+            /* Полностью убираем возможность выделять текст и таскать элементы */
+            -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
+            -webkit-user-drag: none; -webkit-touch-callout: none;
+        }
+        
+        /* Скрываем скроллбары везде, но оставляем возможность скроллить */
+        ::-webkit-scrollbar { display: none; width: 0; height: 0; }
+        * { -ms-overflow-style: none; scrollbar-width: none; }
+
+        body, html { 
+            width: 100%; height: 100%; overflow: hidden; font-family: 'Jost', sans-serif; 
+            background-color: #f7f3f5; color: #1a1a24; 
+            overscroll-behavior: none; touch-action: none; /* Запрет зума щипком */
+            -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; /* Премиальное сглаживание текста */
+        }
+
+        /* Кинематографичный пленочный шум поверх всего сайта */
+        .noise-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9998; opacity: 0.04;
+            background-image: url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+        }
+        
+        /* Курсор с режимом наложения (меняет цвет на контрастный) */
+        .cursor-dot, .cursor-outline { position: fixed; top: 0; left: 0; transform: translate(-50%, -50%); border-radius: 50%; z-index: 9999; pointer-events: none; mix-blend-mode: difference; }
+        .cursor-dot { width: 5px; height: 5px; background-color: #fff; transition: opacity 0.3s; }
+        .cursor-outline { width: 35px; height: 35px; border: 1px solid rgba(255, 255, 255, 0.8); transition: width 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), height 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.3s ease; }
+        .cursor-hover .cursor-outline { width: 70px; height: 70px; background-color: rgba(255, 255, 255, 0.1); border-color: transparent; }
+
+        /* =========================================
+           2. ПРЕЛОАДЕР И УВЕДОМЛЕНИЯ
+        ========================================= */
+        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #f7f3f5; z-index: 5000; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 1.5s ease; }
+        .loader-text { font-family: 'Cormorant Garamond', serif; font-size: 2rem; letter-spacing: 0.1em; font-style: italic; animation: pulseText 2s infinite alternate; }
+        .loader-line { width: 1px; height: 50px; background: #1a1a24; margin-top: 20px; animation: growLine 2s ease infinite; transform-origin: top; }
+        @keyframes pulseText { 0% { opacity: 0.3; } 100% { opacity: 1; } }
+        @keyframes growLine { 0% { transform: scaleY(0); } 50% { transform: scaleY(1); } 100% { transform: scaleY(0); transform-origin: bottom; } }
+
+        #toast { position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%); background: #1a1a24; color: white; padding: 15px 30px; border-radius: 30px; font-size: 0.9rem; z-index: 9999; transition: bottom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #toast.show { bottom: 40px; }
+
+        /* =========================================
+           3. НАВИГАЦИЯ (БЕСШОВНАЯ)
+        ========================================= */
+        #main-nav { position: fixed; top: 0; left: 0; width: 100%; z-index: 1000; display: flex; justify-content: space-between; align-items: center; padding: 3vw 4vw; pointer-events: none; opacity: 0; transition: background 0.3s; }
+        .logo { font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; letter-spacing: 3px; font-weight: 600; text-transform: uppercase; pointer-events: auto; display: inline-block; padding: 10px;}
+        
+        .menu-links { display: flex; gap: 40px; margin-left: auto; margin-right: 50px; pointer-events: auto; align-items: center; }
+        .nav-link { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.5px; position: relative; font-weight: 500; color: #1a1a24; text-decoration: none; transition: color 0.3s; padding: 10px; display: inline-block; }
+        .nav-link::after { content: ''; position: absolute; bottom: 5px; left: 10px; right: 10px; height: 1px; background: #ff4081; transform: scaleX(0); transition: transform 0.4s ease; transform-origin: right; }
+        .nav-link:hover::after, .nav-link.active::after { transform: scaleX(1); transform-origin: left; }
+        
+        .nav-close { color: #ff4081; display: none; font-weight: 600; }
+        .nav-close.active { display: inline-block; animation: fadeIn 0.5s ease forwards; }
+
+        .cart-btn { pointer-events: auto; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 500; transition: color 0.3s; padding: 10px; }
+        .cart-icon { width: 22px; height: 22px; border: 1.5px solid #1a1a24; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 0.7rem; font-weight: 600; transition: all 0.3s ease; }
+        .cart-btn:hover .cart-icon { border-color: #ff4081; background: rgba(255,64,129,0.1); }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* =========================================
+           4. 3D СЦЕНА И ГЛАВНАЯ
+        ========================================= */
+        #webgl-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        .vignette { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; background: radial-gradient(circle at center, transparent 0%, rgba(247, 243, 245, 0.6) 100%); opacity: 0; transition: opacity 1s ease; }
+        .vignette.active { opacity: 1; }
+
+        #page-main { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; padding: 3vw 4vw; display: flex; flex-direction: column; justify-content: center; pointer-events: none; transition: opacity 0.6s ease, transform 0.6s ease; }
+        .main-content { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        
+        .hero-title { font-family: 'Cormorant Garamond', serif; font-size: clamp(3.5rem, 9vw, 10rem); line-height: 0.85; letter-spacing: -0.02em; font-weight: 300; color: rgba(26, 26, 36, 0.95); text-shadow: 4px 4px 20px rgba(255, 255, 255, 0.9); pointer-events: auto; }
+        .hero-title span { display: block; text-transform: uppercase; }
+        .hero-title .italic { font-style: italic; padding-left: 5vw; letter-spacing: 0.02em; text-transform: none; }
+
+        .product-card-hero { width: 340px; padding: 35px; border-radius: 20px; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 40px 60px rgba(0,0,0,0.03); pointer-events: auto; transform-style: preserve-3d; }
+        
+        .footer-ui { position: absolute; bottom: 3vw; left: 4vw; right: 4vw; display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none; }
+        
+        /* Кнопка Fullscreen */
+        .fs-btn { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 3px; font-weight: 600; pointer-events: auto; opacity: 0.5; transition: opacity 0.3s; display: flex; align-items: center; gap: 10px; }
+        .fs-btn:hover { opacity: 1; }
+        .fs-icon { width: 12px; height: 12px; border: 1px solid #1a1a24; position: relative; }
+        
+        .explore-btn { width: 130px; height: 130px; border-radius: 50%; border: 1px solid rgba(26, 26, 36, 0.15); background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); display: flex; justify-content: center; align-items: center; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 1.4rem; pointer-events: auto; transition: all 0.4s ease; color: #1a1a24; text-decoration: none; display: inline-block; text-align: center; line-height: 130px;}
+        .explore-btn:hover { background: #1a1a24; color: #fff; border-color: transparent; }
+
+        /* =========================================
+           5. ВНУТРЕННИЕ СТРАНИЦЫ
+        ========================================= */
+        .overlay-page { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 50; padding: 12vw 5vw 5vw 5vw; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; overflow-y: auto; overflow-x: hidden; }
+        .overlay-page.active { opacity: 1; pointer-events: auto; }
+        
+        /* Каталог */
+        .page-title { font-family: 'Cormorant Garamond', serif; font-size: 4.5rem; margin-bottom: 50px; font-style: italic; overflow: hidden; }
+        .char { display: inline-block; opacity: 0; transform: translateY(100%); } 
+        
+        .catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 40px; padding-bottom: 100px; width: 100%; max-width: 1300px; margin-left: auto; }
+        .product-card { position: relative; padding: 35px; border-radius: 20px; background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.05) 100%); backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.3); box-shadow: 0 30px 50px rgba(0,0,0,0.03); display: flex; flex-direction: column; opacity: 0; transform: translateY(50px); transform-style: preserve-3d; transition: transform 0.1s ease-out; }
+
+        .badge { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 2px; color: #ff4081; font-weight: 600; margin-bottom: 15px; transform: translateZ(20px); }
+        .product-name { font-family: 'Cormorant Garamond', serif; font-size: 2.2rem; line-height: 1; margin-bottom: 15px; font-style: italic; transform: translateZ(30px); }
+        .product-desc { font-size: 0.85rem; line-height: 1.6; color: rgba(26, 26, 36, 0.8); margin-bottom: 25px; flex-grow: 1; transform: translateZ(20px); }
+        .product-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 20px; transform: translateZ(25px); }
+        .product-price { font-size: 1.3rem; font-weight: 500; font-family: 'Cormorant Garamond', serif; }
+        
+        .btn { background: #1a1a24; color: #fff; border: none; padding: 12px 24px; border-radius: 30px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; transition: all 0.3s ease; position: relative; overflow: hidden; }
+        .btn:hover { background: #ff4081; box-shadow: 0 10px 20px rgba(255, 64, 129, 0.3); }
+
+        /* Текстовые панели */
+        .editorial-layout { max-width: 900px; margin: 0 auto; position: relative; perspective: 1000px; }
+        .glass-panel { background: rgba(255,255,255,0.1); backdrop-filter: blur(30px); border: 1px solid rgba(255,255,255,0.2); border-radius: 30px; padding: 60px; box-shadow: 0 40px 80px rgba(0,0,0,0.05); transform-style: preserve-3d; transition: transform 0.1s ease-out; }
+        .text-block { font-size: 1.3rem; line-height: 1.8; margin-bottom: 30px; opacity: 0; font-weight: 300; transform: translateZ(30px); }
+        .text-block strong { font-weight: 500; }
+
+        /* =========================================
+           6. ТЕМНАЯ КОРЗИНА
+        ========================================= */
+        .cart-panel { position: fixed; top: 0; right: -100%; width: 480px; height: 100vh; background: rgba(15, 15, 20, 0.65); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); z-index: 2000; border-left: 1px solid rgba(255,255,255,0.05); padding: 40px; display: flex; flex-direction: column; transition: right 0.7s cubic-bezier(0.77, 0, 0.175, 1); color: #fff; pointer-events: auto;}
+        .cart-panel.active { right: 0; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; }
+        .panel-title { font-family: 'Cormorant Garamond', serif; font-size: 2.2rem; font-style: italic; }
+        .cart-close { background: none; border: none; color: white; font-size: 1.5rem; transition: transform 0.3s, color 0.3s; padding: 10px;}
+        .cart-close:hover { color: #ff4081; transform: rotate(90deg); }
+        
+        .cart-items { flex-grow: 1; overflow-y: auto; padding-right: 15px; }
+        .cart-item { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 15px; padding: 20px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s ease; }
+        .cart-item:hover { background: rgba(255,255,255,0.08); transform: translateX(-5px); border-color: rgba(255,64,129,0.3); }
+        .cart-item-info h4 { font-family: 'Cormorant Garamond', serif; font-size: 1.4rem; margin-bottom: 5px; letter-spacing: 1px;}
+        .cart-item-info p { font-size: 0.9rem; opacity: 0.6; }
+        .cart-item-remove { font-size: 0.7rem; color: #ff4081; background: none; border: none; text-transform: uppercase; margin-top: 10px; font-weight: 500; letter-spacing: 1px; opacity: 0.7; transition: opacity 0.3s;}
+        .cart-item-remove:hover { opacity: 1; text-decoration: underline; }
+        
+        .cart-footer { margin-top: 20px; padding-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); }
+        .cart-total { display: flex; justify-content: space-between; font-family: 'Cormorant Garamond', serif; font-size: 2rem; margin-bottom: 25px; }
+        .checkout-btn { width: 100%; padding: 20px; font-size: 1.1rem; background: #fff; color: #1a1a24; font-weight: 500;}
+        .checkout-btn:hover { background: #ff4081; color: white; }
+    </style>
+</head>
+<body>
+
+    <!-- Шум и Курсор -->
+    <div class="noise-overlay"></div>
+    <div class="cursor-dot" id="cursor-dot"></div>
+    <div class="cursor-outline" id="cursor-outline"></div>
+
+    <div id="loader"><div class="loader-text">Сборка сцены...</div><div class="loader-line"></div></div>
+    <div id="toast">Товар добавлен</div>
+
+    <!-- 3D Сцена -->
+    <canvas id="webgl-canvas"></canvas>
+    <div class="vignette" id="vignette"></div>
+
+    <!-- НАВИГАЦИЯ -->
+    <nav id="main-nav">
+        <div class="logo magnetic interactive" onclick="closeAllPages()">ETHEREAL</div>
+        <div class="menu-links">
+            <a href="#" class="nav-link magnetic interactive" id="link-catalog" onclick="openPage('catalog')">Каталог</a>
+            <a href="#" class="nav-link magnetic interactive" id="link-studio" onclick="openPage('studio')">Студия</a>
+            <a href="#" class="nav-link magnetic interactive" id="link-delivery" onclick="openPage('delivery')">Доставка</a>
+            <a href="#" class="nav-link nav-close magnetic interactive" id="nav-close" onclick="closeAllPages()">✕ НАЗАД</a>
+        </div>
+        <div class="cart-btn magnetic interactive" onclick="toggleCart()">
+            Корзина <div class="cart-icon"><span id="cart-counter">0</span></div>
+        </div>
+    </nav>
+
+    <!-- ГЛАВНАЯ СТРАНИЦА -->
+    <div id="page-main">
+        <div class="main-content">
+            <h1 class="hero-title parallax-elem magnetic interactive" data-speed="0.04" onclick="triggerRipple(true)">
+                <span>Botanical</span><span class="italic">Boutique</span>
+            </h1>
+            <div class="product-card-hero parallax-elem interactive tilt-card" data-speed="-0.03">
+                <span class="badge" style="transform: translateZ(20px); display:block;">Букет дня</span>
+                <h2 class="product-name" style="transform: translateZ(30px);">Хрустальный Пион</h2>
+                <p class="product-desc" style="font-size: 0.85rem; line-height: 1.5; color: rgba(26, 26, 36, 0.7); margin-bottom: 20px; transform: translateZ(20px);">Невесомая композиция из редких сортов роз, пионов и эвкалипта.</p>
+                <div class="product-footer" style="transform: translateZ(25px);">
+                    <span class="product-price">12 500 ₽</span>
+                    <button class="btn magnetic interactive" onclick="addToCart({id: 1, name: 'Хрустальный Пион', price: 12500}); event.stopPropagation();">В корзину</button>
+                </div>
+            </div>
+        </div>
+        <div class="footer-ui parallax-elem" data-speed="-0.03">
+            <div class="fs-btn magnetic interactive" onclick="toggleFullScreen()"><div class="fs-icon"></div> Фулскрин</div>
+            <a href="#" class="explore-btn magnetic interactive" onclick="openPage('studio')">Концепция</a>
+        </div>
+    </div>
+
+    <!-- КАТАЛОГ -->
+    <div class="overlay-page" id="page-catalog">
+        <div style="max-width: 1400px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: flex-end;">
+            <h2 class="page-title split-text" data-split="Коллекция Букетов">Коллекция Букетов</h2>
+            <div class="catalog-grid" id="catalog-grid"></div>
+        </div>
+    </div>
+
+    <!-- СТУДИЯ -->
+    <div class="overlay-page" id="page-studio">
+        <div class="editorial-layout tilt-card">
+            <div class="glass-panel">
+                <h2 class="page-title split-text" data-split="Наша Философия" style="text-align: left; transform: translateZ(40px); font-size: 3.5rem;">Наша Философия</h2>
+                <p class="text-block text-anim-std">Мы верим, что цветы — это форма <strong>современного искусства</strong>. Ethereal Botanical объединяет математическую точность флористики с непредсказуемой красотой природы.</p>
+                <p class="text-block text-anim-std">Каждый букет собирается вручную в нашей светлой студии, вдохновленной эстетикой чистого стекла, воды и преломления света. Мы не используем пластик, только природные формы.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ДОСТАВКА -->
+    <div class="overlay-page" id="page-delivery">
+        <div class="editorial-layout tilt-card">
+            <div class="glass-panel">
+                <h2 class="page-title split-text" data-split="Бережная Доставка" style="text-align: left; transform: translateZ(40px); font-size: 3.5rem;">Бережная Доставка</h2>
+                <p class="text-block text-anim-del">Мы доставляем букеты в специальных <strong>аква-боксах</strong>, чтобы сохранить их свежесть и защитить хрупкие лепестки от перепадов температуры.</p>
+                <p class="text-block text-anim-del"><strong>По городу:</strong> Бесплатно при заказе от 10 000 ₽.<br>В остальных случаях — 500 ₽.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- КОРЗИНА -->
+    <div class="cart-panel" id="cart-panel">
+        <div class="panel-header">
+            <h3 class="panel-title">Ваша корзина</h3>
+            <button class="cart-close magnetic interactive" onclick="toggleCart()">✕</button>
+        </div>
+        <div class="cart-items" id="cart-items-container">
+            <p style="text-align:center; opacity:0.3; font-style:italic; margin-top:50px; font-size: 1.2rem;">Корзина пуста</p>
+        </div>
+        <div class="cart-footer">
+            <div class="cart-total"><span>Итого:</span><span id="cart-total-price" style="color:#ff4081;">0 ₽</span></div>
+            <button class="btn checkout-btn magnetic interactive" onclick="checkout()">Оформить заказ</button>
+        </div>
+    </div>
+
+    <!-- Скрипты -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <script>
+        // =========================================
+        // БЛОКИРОВКА ПРАВОЙ КНОПКИ МЫШИ (ANTI-COPY)
+        // =========================================
+        document.addEventListener('contextmenu', event => event.preventDefault());
+
+        // =========================================
+        // FULLSCREEN API (ПОЛНОЕ ПОГРУЖЕНИЕ)
+        // =========================================
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // =========================================
+        // УТИЛИТЫ WOW-ЭФФЕКТОВ
+        // =========================================
+        document.querySelectorAll('.magnetic').forEach(btn => {
+            btn.addEventListener('mousemove', function(e) {
+                const rect = this.getBoundingClientRect();
+                const x = e.clientX - rect.left - rect.width / 2;
+                const y = e.clientY - rect.top - rect.height / 2;
+                gsap.to(this, { x: x * 0.4, y: y * 0.4, duration: 0.3, ease: "power2.out" });
+            });
+            btn.addEventListener('mouseleave', function() { gsap.to(this, { x: 0, y: 0, duration: 0.5, ease: "elastic.out(1, 0.3)" }); });
+        });
+
+        document.querySelectorAll('.split-text').forEach(el => {
+            const text = el.getAttribute('data-split');
+            el.innerHTML = text.split('').map(char => `<span class="char">${char === ' ' ? '&nbsp;' : char}</span>`).join('');
+        });
+
+        function applyTilt(elements) {
+            elements.forEach(card => {
+                card.addEventListener('mousemove', (e) => {
+                    const rect = card.getBoundingClientRect();
+                    const x = e.clientX - rect.left; const y = e.clientY - rect.top;
+                    const rotateX = ((y - (rect.height / 2)) / (rect.height / 2)) * -5;
+                    const rotateY = ((x - (rect.width / 2)) / (rect.width / 2)) * 5;
+                    card.style.transform = `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+                });
+                card.addEventListener('mouseleave', () => { card.style.transform = `perspective(1200px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`; });
+            });
+        }
+        applyTilt(document.querySelectorAll('.tilt-card'));
+
+        // =========================================
+        // ДАННЫЕ И КОРЗИНА
+        // =========================================
+        const catalogData =[
+            { id: 2, name: 'Весенний Бриз', price: 8500, desc: 'Нежные тюльпаны, ранункулюсы и воздушная зелень в прозрачном стекле.' },
+            { id: 3, name: 'Абсолютная Роза', price: 15000, desc: 'Архитектурный монобукет из 51 премиальной эквадорской розы.' },
+            { id: 4, name: 'Ночной Ирис', price: 9200, desc: 'Загадочные глубокие синие ирисы, оттененные серебристой лавандой.' },
+            { id: 5, name: 'Стеклянная Орхидея', price: 18000, desc: 'Ветви экзотических орхидей цимбидиум, парящие в невесомости.' }
+        ];
+
+        let cart =[]; let currentPage = 'main';
+        const pageMain = document.getElementById('page-main');
+        const vignette = document.getElementById('vignette');
+
+        function initCatalog() {
+            const grid = document.getElementById('catalog-grid');
+            catalogData.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'product-card interactive card-anim tilt-card';
+                card.innerHTML = `
+                    <span class="badge">В наличии</span><h2 class="product-name">${item.name}</h2><p class="product-desc">${item.desc}</p>
+                    <div class="product-footer"><span class="product-price">${item.price.toLocaleString('ru-RU')} ₽</span><button class="btn magnetic interactive" onclick="addToCart({id: ${item.id}, name: '${item.name}', price: ${item.price}}); event.stopPropagation();">В корзину</button></div>
+                `;
+                grid.appendChild(card);
+            });
+            applyTilt(document.querySelectorAll('#catalog-grid .tilt-card'));
+        }
+        initCatalog();
+
+        function addToCart(product) {
+            cart.push(product); updateCartUI(); showToast(`«${product.name}» добавлен!`);
+            gsap.fromTo('.cart-icon', { scale: 1.5, borderColor: '#ff4081', color: '#ff4081'}, { scale: 1, borderColor: '#1a1a24', color: '#1a1a24', duration: 0.5 }); triggerRipple(true); 
+        }
+        function removeFromCart(index) { cart.splice(index, 1); updateCartUI(); triggerRipple(); }
+        
+        function updateCartUI() {
+            document.getElementById('cart-counter').textContent = cart.length;
+            const container = document.getElementById('cart-items-container');
+            if (cart.length === 0) {
+                container.innerHTML = '<p style="text-align:center; opacity:0.3; font-style:italic; margin-top:50px; font-size: 1.2rem;">Корзина пуста</p>';
+                document.getElementById('cart-total-price').textContent = '0 ₽'; return;
+            }
+            container.innerHTML = ''; let total = 0;
+            cart.forEach((item, index) => {
+                total += item.price;
+                container.innerHTML += `<div class="cart-item"><div class="cart-item-info"><h4>${item.name}</h4><p>${item.price.toLocaleString('ru-RU')} ₽</p><button class="cart-item-remove interactive" onclick="removeFromCart(${index})">Удалить из заказа</button></div></div>`;
+            });
+            document.getElementById('cart-total-price').textContent = `${total.toLocaleString('ru-RU')} ₽`;
+        }
+
+        function checkout() {
+            if (cart.length === 0) return showToast("Корзина пуста!");
+            cart =[]; updateCartUI(); toggleCart(); showToast("Успешно! Ваш заказ оформлен.", 4000); triggerRipple(true); 
+        }
+
+        function toggleCart() { document.getElementById('cart-panel').classList.toggle('active'); triggerRipple(); }
+
+        let toastTimeout;
+        function showToast(msg, duration = 2000) {
+            const toast = document.getElementById('toast'); toast.textContent = msg; toast.classList.add('show');
+            clearTimeout(toastTimeout); toastTimeout = setTimeout(() => toast.classList.remove('show'), duration);
+        }
+
+        // =========================================
+        // THREE.JS И ИНТЕРАКТИВНОСТЬ
+        // =========================================
+        const canvas = document.querySelector('#webgl-canvas');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+        
+        const sceneState = { waveAmp: 0.15, rotSpeed: 1.0, pSpeed: 0.015, ripple: 0, coreGlow: 0.4 };
+        const camBase = { x: 0, y: 0, z: 16 }; camera.position.set(camBase.x, camBase.y, camBase.z);
+
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2;
+
+        const pureGlass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.05, roughness: 0.02, transmission: 1.0, ior: 1.52, thickness: 5.0, clearcoat: 1.0, clearcoatRoughness: 0.05 });
+        const frostGlass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.2, transmission: 0.8, ior: 1.4, thickness: 1.0 });
+
+        const coreMat = new THREE.MeshPhysicalMaterial({ color: 0xffe6f0, emissive: 0xffaa00, emissiveIntensity: sceneState.coreGlow, transmission: 0.9, roughness: 0.1 });
+        const core = new THREE.Mesh(new THREE.SphereGeometry(1.2, 64, 64), coreMat); scene.add(core);
+
+        const blobGeo = new THREE.SphereGeometry(3.5, 128, 128); 
+        const blobOriginal =[]; const blobPos = blobGeo.attributes.position;
+        for (let i = 0; i < blobPos.count; i++) { const v = new THREE.Vector3(); v.fromBufferAttribute(blobPos, i); blobOriginal.push(v.clone()); }
+        const blob = new THREE.Mesh(blobGeo, pureGlass); scene.add(blob);
+
+        const ringsGroup = new THREE.Group();
+        for (let i = 0; i < 3; i++) {
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(5.0 + i * 0.8, 0.03, 32, 100), frostGlass);
+            ring.rotation.x = Math.random() * Math.PI; ring.rotation.y = Math.random() * Math.PI; ringsGroup.add(ring);
+        }
+        scene.add(ringsGroup);
+
+        const orb1 = new THREE.Mesh(new THREE.SphereGeometry(3,32,32), new THREE.MeshBasicMaterial({color: 0xffaa00})); orb1.position.set(-6,4,-8); scene.add(orb1);
+        const orb2 = new THREE.Mesh(new THREE.SphereGeometry(4,32,32), new THREE.MeshBasicMaterial({color: 0x00ccff})); orb2.position.set(7,-3,-10); scene.add(orb2);
+        const orb3 = new THREE.Mesh(new THREE.SphereGeometry(2,32,32), new THREE.MeshBasicMaterial({color: 0xff0066})); orb3.position.set(-2,-6,-6); scene.add(orb3);
+
+        const pCount = 800; const pGeo = new THREE.BufferGeometry(); const pPosArr = new Float32Array(pCount * 3); const pOff = new Float32Array(pCount);
+        for(let i = 0; i < pCount; i++) { pPosArr[i*3] = (Math.random() - 0.5) * 20; pPosArr[i*3+1] = (Math.random() - 0.5) * 20; pPosArr[i*3+2] = (Math.random() - 0.5) * 15 - 5; pOff[i] = Math.random() * Math.PI * 2; }
+        pGeo.setAttribute('position', new THREE.BufferAttribute(pPosArr, 3)); pGeo.setAttribute('aOffset', new THREE.BufferAttribute(pOff, 1));
+        const particles = new THREE.Points(pGeo, new THREE.PointsMaterial({ size: 0.08, color: 0xffffff, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending })); scene.add(particles);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2); dirLight.position.set(5, 10, 7); scene.add(dirLight);
+        const mouseLight = new THREE.PointLight(0xffffff, 1, 15); scene.add(mouseLight);
+
+        function triggerRipple(isStrong = false) {
+            const power = isStrong ? 1.5 : 0.6;
+            gsap.fromTo(sceneState, { ripple: power }, { ripple: 0, duration: 1.5, ease: "elastic.out(1, 0.3)" });
+            gsap.fromTo(coreMat, { emissiveIntensity: 2.0 }, { emissiveIntensity: sceneState.coreGlow, duration: 1.0, ease: "power2.out" });
+        }
+        window.addEventListener('mousedown', (e) => { if(!e.target.closest('.cart-panel') && !e.target.closest('nav')) triggerRipple(); });
+
+        let targetX = 0, targetY = 0;
+        document.addEventListener('mousemove', (e) => {
+            targetX = (e.clientX / window.innerWidth) * 2 - 1; targetY = -(e.clientY / window.innerHeight) * 2 + 1;
+            gsap.to(mouseLight.position, { x: targetX * 10, y: targetY * 10, duration: 1, ease: "power2.out" });
+
+            if(currentPage === 'main') {
+                document.querySelectorAll('.parallax-elem').forEach(el => {
+                    const speed = el.getAttribute('data-speed');
+                    el.style.transform = `translate(${(window.innerWidth - e.pageX * speed) / 100}px, ${(window.innerHeight - e.pageY * speed) / 100}px)`;
+                });
+            }
+
+            document.getElementById('cursor-dot').style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+            document.getElementById('cursor-outline').style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+        });
+
+        const interactClasses =['interactive', 'magnetic'];
+        document.body.addEventListener('mouseenter', (e) => { 
+            if(interactClasses.some(c => e.target.classList && e.target.classList.contains(c))) {
+                document.body.classList.add('cursor-hover'); gsap.to(mouseLight, { intensity: 4, distance: 20, duration: 0.3 });
+            }
+        }, true);
+        document.body.addEventListener('mouseleave', (e) => { 
+            if(interactClasses.some(c => e.target.classList && e.target.classList.contains(c))) {
+                document.body.classList.remove('cursor-hover'); gsap.to(mouseLight, { intensity: 1, distance: 15, duration: 0.3 });
+            }
+        }, true);
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate); const time = clock.getElapsedTime();
+            const currentWave = sceneState.waveAmp + sceneState.ripple; const v = new THREE.Vector3();
+            for (let i = 0; i < blobPos.count; i++) {
+                v.copy(blobOriginal[i]);
+                const w1 = Math.sin(v.x * 1.5 + time * 1.5) * currentWave; const w2 = Math.cos(v.y * 1.5 + time * 1.2) * currentWave; const w3 = Math.sin(v.z * 1.5 + time * 1.0) * currentWave;
+                v.normalize().multiplyScalar(3.5 + w1 + w2 + w3); blobPos.setXYZ(i, v.x, v.y, v.z);
+            }
+            blobPos.needsUpdate = true; blobGeo.computeVertexNormals(); 
+
+            blob.rotation.y += 0.003 * sceneState.rotSpeed; blob.rotation.z += 0.002 * sceneState.rotSpeed;
+            core.rotation.x += 0.01 * sceneState.rotSpeed; core.rotation.y += 0.01 * sceneState.rotSpeed;
+            ringsGroup.children.forEach((r, i) => { r.rotation.x += 0.001 * (i + 1) * sceneState.rotSpeed; r.rotation.y += 0.002 * (i % 2 === 0 ? 1 : -1) * sceneState.rotSpeed; });
+
+            orb1.position.x = Math.sin(time * 0.3) * 8; orb1.position.y = Math.cos(time * 0.5) * 5; orb2.position.x = Math.cos(time * 0.2) * 10; orb2.position.z = Math.sin(time * 0.4) * 6 - 8; orb3.position.y = Math.sin(time * 0.6) * 7;
+
+            const pos = pGeo.attributes.position.array;
+            for(let i = 0; i < pCount; i++) {
+                const idx = i * 3; pos[idx + 1] += sceneState.pSpeed; pos[idx] += Math.sin(time + pOff[i]) * 0.01; pos[idx + 2] += Math.cos(time + pOff[i]) * 0.01;
+                if (pos[idx + 1] > 10) pos[idx + 1] = -10;
+            }
+            pGeo.attributes.position.needsUpdate = true;
+
+            camera.position.x += ((camBase.x + targetX * 1.5) - camera.position.x) * 0.05; camera.position.y += ((camBase.y + targetY * 1.5) - camera.position.y) * 0.05; camera.position.z += (camBase.z - camera.position.z) * 0.05; camera.lookAt(0, 0, 0);
+            renderer.render(scene, camera);
+        }
+
+        function tweenColor(threeMaterial, targetHexStr, duration) {
+            const c = new THREE.Color(targetHexStr); gsap.to(threeMaterial.color, { r: c.r, g: c.g, b: c.b, duration: duration, ease: "power2.inOut" });
+        }
+
+        // =========================================
+        // МАРШРУТИЗАТОР (БЕСШОВНЫЙ SPA)
+        // =========================================
+        function openPage(pageId) {
+            if(currentPage === pageId) return;
+            if (currentPage !== 'main') document.getElementById(`page-${currentPage}`).classList.remove('active');
+            currentPage = pageId;
+            
+            pageMain.style.opacity = '0'; pageMain.style.pointerEvents = 'none'; vignette.classList.add('active'); 
+            document.getElementById('nav-close').classList.add('active');
+            
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            const activeLink = document.getElementById(`link-${pageId}`); if(activeLink) activeLink.classList.add('active');
+            
+            const targetPage = document.getElementById(`page-${pageId}`); if(targetPage) targetPage.classList.add('active');
+
+            gsap.to(sceneState, { waveAmp: 0.6, rotSpeed: 6.0, pSpeed: 0.15, duration: 0.8, yoyo: true, repeat: 1, ease: "power2.inOut" });
+
+            let colors =[];
+            if (pageId === 'catalog') {
+                colors =['#ffffff', '#aaddff', '#4488ff']; gsap.to(camBase, { x: 6, y: 0, z: 20, duration: 2, ease: "power3.inOut" });
+                gsap.fromTo(".card-anim", { opacity: 0, y: 100 }, { opacity: 1, y: 0, duration: 1, stagger: 0.1, ease: "back.out(1.2)", delay: 0.5 });
+                gsap.fromTo(`#page-catalog .char`, { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 0.8, stagger: 0.02, ease: "back.out(1.5)", delay: 0.3 });
+            } else if (pageId === 'studio') {
+                colors =['#ff5500', '#ffaa00', '#ff2255']; gsap.to(camBase, { x: 0, y: 0, z: 4.5, duration: 2.5, ease: "power3.inOut" }); 
+                gsap.fromTo(`#page-studio .char`, { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 0.8, stagger: 0.02, ease: "back.out(1.5)", delay: 0.8 });
+                gsap.fromTo(".text-anim-std", { opacity: 0, z: -50 }, { opacity: 1, z: 30, duration: 1.5, stagger: 0.15, ease: "power3.out", delay: 1.2 });
+            } else if (pageId === 'delivery') {
+                colors =['#00ff88', '#00ccff', '#ffffff']; gsap.to(camBase, { x: 0, y: 0, z: 4.5, duration: 2.5, ease: "power3.inOut" });
+                gsap.fromTo(`#page-delivery .char`, { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 0.8, stagger: 0.02, ease: "back.out(1.5)", delay: 0.8 });
+                gsap.fromTo(".text-anim-del", { opacity: 0, z: -50 }, { opacity: 1, z: 30, duration: 1.5, stagger: 0.15, ease: "power3.out", delay: 1.2 });
+            }
+
+            if(colors.length === 3) { tweenColor(orb1.material, colors[0], 2); tweenColor(orb2.material, colors[1], 2); tweenColor(orb3.material, colors[2], 2); tweenColor(dirLight, colors[0], 2); }
+        }
+
+        function closeAllPages() {
+            if(currentPage === 'main') return;
+            currentPage = 'main';
+            document.querySelectorAll('.overlay-page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.getElementById('nav-close').classList.remove('active');
+            
+            pageMain.style.opacity = '1'; pageMain.style.pointerEvents = 'auto'; vignette.classList.remove('active');
+            gsap.to(sceneState, { waveAmp: 0.6, rotSpeed: 6.0, pSpeed: 0.15, duration: 0.8, yoyo: true, repeat: 1, ease: "power2.inOut" });
+            tweenColor(orb1.material, '#ffaa00', 2); tweenColor(orb2.material, '#00ccff', 2); tweenColor(orb3.material, '#ff0066', 2); tweenColor(dirLight, '#ffffff', 2);
+            gsap.to(camBase, { x: 0, y: 0, z: 16, duration: 2, ease: "power3.inOut" });
+        }
+
+        window.onload = () => {
+            setTimeout(() => {
+                document.getElementById('loader').style.opacity = '0'; setTimeout(() => document.getElementById('loader').style.display = 'none', 1500);
+                const tl = gsap.timeline();
+                tl.fromTo(camBase, { z: 40 }, { z: 16, duration: 3, ease: "power3.inOut" }, 0); 
+                tl.to("#main-nav", { opacity: 1, duration: 1, ease: "power2.out" }, "-=1.5");
+                tl.to(".hero-title", { opacity: 1, y: 0, duration: 1.5, ease: "power3.out" }, "-=1.0");
+                tl.fromTo(".product-card-hero", { opacity: 0, x: 50 }, { opacity: 1, x: 0, duration: 1, ease: "power2.out" }, "-=1.0");
+                tl.to(".footer-ui", { opacity: 1, duration: 1, ease: "power2.out" }, "-=0.5");
+                ringsGroup.children.forEach((ring, index) => { gsap.fromTo(ring.scale, { x: 0, y: 0, z: 0 }, { x: 1, y: 1, z: 1, duration: 2.5, ease: "power3.out", delay: index * 0.2 }); });
+            }, 2000);
+        };
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        animate();
+    </script>
+</body>
+</html>
