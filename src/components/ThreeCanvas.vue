@@ -35,6 +35,7 @@ const targetY = ref(0)
 
 let scene, camera, renderer, clock
 let blob, blobGeo, blobPos, blobOriginal, core, coreMat
+let orb1, orb2, orb3
 let ringsGroup, particles, pGeo, pOff, pCount
 let planes = []
 let dirLight, mouseLight
@@ -115,6 +116,15 @@ function animate() {
     r.rotation.x += 0.001 * (i + 1) * sceneState.rotSpeed
     r.rotation.y += 0.002 * (i % 2 === 0 ? 1 : -1) * sceneState.rotSpeed
   })
+
+  // Animate orbs (desktop only)
+  if (!isMobile) {
+    orb1.position.x = Math.sin(time * 0.3) * 8
+    orb1.position.y = Math.cos(time * 0.5) * 5
+    orb2.position.x = Math.cos(time * 0.2) * 10
+    orb2.position.z = Math.sin(time * 0.4) * 6 - 8
+    orb3.position.y = Math.sin(time * 0.6) * 7
+  }
 
   // Animate airplanes
   planes.forEach((p) => {
@@ -213,6 +223,11 @@ function openPage(pageId) {
   }
 
   if (colors.length === 3) {
+    if (!isMobile) {
+      tweenColor(orb1.material, colors[0], 2)
+      tweenColor(orb2.material, colors[1], 2)
+      tweenColor(orb3.material, colors[2], 2)
+    }
     planes.forEach((p, i) => {
       if (colors[i]) {
         tweenColor(p.material, colors[i], 2)
@@ -225,6 +240,11 @@ function openPage(pageId) {
 
 function closeAllPages() {
   gsap.to(sceneState, { waveAmp: 0.6, rotSpeed: 6.0, pSpeed: 0.15, duration: 0.8, yoyo: true, repeat: 1, ease: 'power2.inOut' })
+  if (!isMobile) {
+    tweenColor(orb1.material, '#ff6b35', 2)
+    tweenColor(orb2.material, '#4ecdc4', 2)
+    tweenColor(orb3.material, '#ffd166', 2)
+  }
   const defaults = ['#ff6b35', '#4ecdc4', '#ffd166']
   planes.forEach((p, i) => {
     tweenColor(p.material, defaults[i], 2)
@@ -334,6 +354,30 @@ onMounted(async () => {
     ringsGroup.add(ring)
   }
   scene.add(ringsGroup)
+
+  // Colored orbs behind the glass blob (desktop only)
+  if (!isMobile) {
+    orb1 = new THREE.Mesh(
+      new THREE.SphereGeometry(3, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0xff6b35 })
+    )
+    orb1.position.set(-6, 4, -8)
+    scene.add(orb1)
+
+    orb2 = new THREE.Mesh(
+      new THREE.SphereGeometry(4, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0x4ecdc4 })
+    )
+    orb2.position.set(7, -3, -10)
+    scene.add(orb2)
+
+    orb3 = new THREE.Mesh(
+      new THREE.SphereGeometry(2, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffd166 })
+    )
+    orb3.position.set(-2, -6, -6)
+    scene.add(orb3)
+  }
 
   // Particles
   pCount = isMobile ? 300 : 800
