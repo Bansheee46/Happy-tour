@@ -19,6 +19,8 @@ const emit = defineEmits(['scene-ready'])
 
 const canvasRef = ref(null)
 
+const isMobile = window.innerWidth <= 768
+
 const sceneState = reactive({
   waveAmp: 0.15,
   rotSpeed: 1.0,
@@ -41,6 +43,7 @@ let animFrameId = null
 let loadedPlaneGeo = null
 let gyroAvailable = false
 let gyroTarget = { x: 0, y: 0 }
+let frameCount = 0
 
 function tweenColor(material, targetHexStr, duration) {
   const c = new THREE.Color(targetHexStr)
@@ -55,7 +58,7 @@ function tweenEmissive(material, targetHexStr, duration) {
 function createPlaneInstance(color, scale) {
   const group = new THREE.Group()
 
-  const mat = new THREE.MeshPhysicalMaterial({
+  const mat = new THREE.MeshStandardMaterial({
     color: color,
     metalness: 0.4,
     roughness: 0.3,
@@ -67,7 +70,7 @@ function createPlaneInstance(color, scale) {
 
   if (loadedPlaneGeo) {
     const mesh = new THREE.Mesh(loadedPlaneGeo, mat)
-    mesh.rotation.y = Math.PI / 2  // rotate so side faces camera
+    mesh.rotation.y = Math.PI / 2
     group.add(mesh)
   }
 
@@ -83,6 +86,11 @@ function triggerRipple(isStrong = false) {
 
 function animate() {
   animFrameId = requestAnimationFrame(animate)
+  frameCount++
+
+  // Skip every other frame on mobile for perf
+  if (isMobile && frameCount % 2 !== 0) return
+
   const time = clock.getElapsedTime()
 
   // Deform blob
@@ -117,15 +125,13 @@ function animate() {
   orb3.position.y = Math.sin(time * 0.6) * 7
 
   // Animate airplanes
-  planes.forEach((p, i) => {
+  planes.forEach((p) => {
     const t = time * p.speed
 
-    // Wide sweeping orbit
     p.group.position.x = Math.sin(t + p.offset) * p.radiusX
     p.group.position.y = Math.cos(t * 0.7 + p.offset * 2) * p.radiusY + Math.sin(t * 1.3) * 1.0
-    p.group.position.z = 2  // in front of blob (blob is at z=0)
+    p.group.position.z = 2
 
-    // Face direction of travel
     const futureT = t + 0.05
     const fx = Math.sin(futureT + p.offset) * p.radiusX
     const fy = Math.cos(futureT * 0.7 + p.offset * 2) * p.radiusY + Math.sin(futureT * 1.3) * 1.0
@@ -149,7 +155,7 @@ function animate() {
   }
   pGeo.attributes.position.needsUpdate = true
 
-  // Camera - blend mouse and gyroscope
+  // Camera
   const gyroInfluence = gyroAvailable ? 0.6 : 0
   const mouseInfluence = 1 - gyroInfluence
   const camTargetX = camBase.x + (targetX.value * 1.5 * mouseInfluence + gyroTarget.x * 3 * gyroInfluence)
@@ -172,7 +178,7 @@ function onResize() {
 function onMouseMove(e) {
   targetX.value = (e.clientX / window.innerWidth) * 2 - 1
   targetY.value = -(e.clientY / window.innerHeight) * 2 + 1
-  gsap.to(mouseLight.position, { x: targetX.value * 10, y: targetY.value * 10, duration: 1, ease: 'power2.out' })
+  if (mouseLight) gsap.to(mouseLight.position, { x: targetX.value * 10, y: targetY.value * 10, duration: 1, ease: 'power2.out' })
 }
 
 function onMouseDown(e) {
@@ -262,36 +268,65 @@ onMounted(async () => {
   camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100)
   camera.position.set(camBase.x, camBase.y, camBase.z)
 
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+  renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: !isMobile,
+    alpha: true,
+    powerPreference: isMobile ? 'low-power' : 'high-performance'
+  })
   renderer.setSize(window.innerWidth, window.innerHeight)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2))
   renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 1.2
+  renderer.toneMappingExposure = isMobile ? 1.0 : 1.2
 
   clock = new THREE.Clock()
 
-  // Glass materials for blob & rings
-  const pureGlass = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, metalness: 0.05, roughness: 0.02,
-    transmission: 1.0, ior: 1.52, thickness: 5.0,
-    clearcoat: 1.0, clearcoatRoughness: 0.05
-  })
-  const frostGlass = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, metalness: 0.1, roughness: 0.2,
-    transmission: 0.8, ior: 1.4, thickness: 1.0
-  })
+  // Adaptive quality levels
+  const blobSeg = isMobile ? 64 : 128
+  const coreSeg = isMobile ? 32 : 64
+  const orbSeg = isMobile ? 16 : 32
+  const ringSeg = isMobile ? 16 : 32
+  const ringTube = isMobile ? 0.04 : 0.03
+
+  // Glass materials - use cheaper StandardMaterial on mobile
+  let pureGlass, frostGlass
+  if (isMobile) {
+    pureGlass = new THREE.MeshStandardMaterial({
+      color: 0xffffff, metalness: 0.05, roughness: 0.05,
+      transparent: true, opacity: 0.35
+    })
+    frostGlass = new THREE.MeshStandardMaterial({
+      color: 0xffffff, metalness: 0.1, roughness: 0.15,
+      transparent: true, opacity: 0.3
+    })
+  } else {
+    pureGlass = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, metalness: 0.05, roughness: 0.02,
+      transmission: 1.0, ior: 1.52, thickness: 5.0,
+      clearcoat: 1.0, clearcoatRoughness: 0.05
+    })
+    frostGlass = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, metalness: 0.1, roughness: 0.2,
+      transmission: 0.8, ior: 1.4, thickness: 1.0
+    })
+  }
 
   // Core
-  coreMat = new THREE.MeshPhysicalMaterial({
-    color: 0xffe6f0, emissive: 0xffaa00,
-    emissiveIntensity: sceneState.coreGlow,
-    transmission: 0.9, roughness: 0.1
-  })
-  core = new THREE.Mesh(new THREE.SphereGeometry(1.2, 64, 64), coreMat)
+  coreMat = isMobile
+    ? new THREE.MeshStandardMaterial({
+        color: 0xffe6f0, emissive: 0xffaa00,
+        emissiveIntensity: sceneState.coreGlow
+      })
+    : new THREE.MeshPhysicalMaterial({
+        color: 0xffe6f0, emissive: 0xffaa00,
+        emissiveIntensity: sceneState.coreGlow,
+        transmission: 0.9, roughness: 0.1
+      })
+  core = new THREE.Mesh(new THREE.SphereGeometry(1.2, coreSeg, coreSeg), coreMat)
   scene.add(core)
 
   // Blob
-  blobGeo = new THREE.SphereGeometry(3.5, 128, 128)
+  blobGeo = new THREE.SphereGeometry(3.5, blobSeg, blobSeg)
   blobOriginal = []
   blobPos = blobGeo.attributes.position
   for (let i = 0; i < blobPos.count; i++) {
@@ -306,7 +341,7 @@ onMounted(async () => {
   ringsGroup = new THREE.Group()
   for (let i = 0; i < 3; i++) {
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(5.0 + i * 0.8, 0.03, 32, 100),
+      new THREE.TorusGeometry(5.0 + i * 0.8, ringTube, ringSeg, 64),
       frostGlass
     )
     ring.rotation.x = Math.random() * Math.PI
@@ -317,28 +352,28 @@ onMounted(async () => {
 
   // Colored orbs behind the glass blob
   orb1 = new THREE.Mesh(
-    new THREE.SphereGeometry(3, 32, 32),
+    new THREE.SphereGeometry(3, orbSeg, orbSeg),
     new THREE.MeshBasicMaterial({ color: 0xff6b35 })
   )
   orb1.position.set(-6, 4, -8)
   scene.add(orb1)
 
   orb2 = new THREE.Mesh(
-    new THREE.SphereGeometry(4, 32, 32),
+    new THREE.SphereGeometry(4, orbSeg, orbSeg),
     new THREE.MeshBasicMaterial({ color: 0x4ecdc4 })
   )
   orb2.position.set(7, -3, -10)
   scene.add(orb2)
 
   orb3 = new THREE.Mesh(
-    new THREE.SphereGeometry(2, 32, 32),
+    new THREE.SphereGeometry(2, orbSeg, orbSeg),
     new THREE.MeshBasicMaterial({ color: 0xffd166 })
   )
   orb3.position.set(-2, -6, -6)
   scene.add(orb3)
 
   // Particles
-  pCount = 800
+  pCount = isMobile ? 300 : 800
   pGeo = new THREE.BufferGeometry()
   const pPosArr = new Float32Array(pCount * 3)
   pOff = new Float32Array(pCount)
@@ -351,27 +386,25 @@ onMounted(async () => {
   pGeo.setAttribute('position', new THREE.BufferAttribute(pPosArr, 3))
   pGeo.setAttribute('aOffset', new THREE.BufferAttribute(pOff, 1))
   particles = new THREE.Points(pGeo, new THREE.PointsMaterial({
-    size: 0.08, color: 0xffffff, transparent: true,
+    size: isMobile ? 0.1 : 0.08, color: 0xffffff, transparent: true,
     opacity: 0.6, blending: THREE.AdditiveBlending
   }))
   scene.add(particles)
 
-  // Lights
+  // Lights - fewer on mobile
   scene.add(new THREE.AmbientLight(0xffffff, 0.5))
   dirLight = new THREE.DirectionalLight(0xffffff, 2)
   dirLight.position.set(5, 10, 7)
   scene.add(dirLight)
-  mouseLight = new THREE.PointLight(0xffffff, 1, 15)
-  scene.add(mouseLight)
+  if (!isMobile) {
+    mouseLight = new THREE.PointLight(0xffffff, 1, 15)
+    scene.add(mouseLight)
+  }
 
-  // Load plane model and spawn 3 instances
+  // Load plane model
   const loader = new GLTFLoader()
 
   loader.load('/models/plane.glb', (gltf) => {
-    console.log('GLB loaded:', gltf)
-    console.log('Scene children:', gltf.scene.children)
-
-    // Find first mesh - could be nested in groups
     let sourceMesh = null
     gltf.scene.traverse((child) => {
       if (child.isMesh && !sourceMesh) {
@@ -379,17 +412,13 @@ onMounted(async () => {
       }
     })
 
-    console.log('Found mesh:', sourceMesh)
-
     if (sourceMesh && sourceMesh.geometry) {
       loadedPlaneGeo = sourceMesh.geometry.clone()
 
-      // Apply source mesh transforms if any
       if (sourceMesh.matrixWorld) {
         loadedPlaneGeo.applyMatrix4(sourceMesh.matrixWorld)
       }
 
-      // Center and normalize the geometry
       loadedPlaneGeo.computeBoundingBox()
       const box = loadedPlaneGeo.boundingBox
       const center = new THREE.Vector3()
@@ -400,16 +429,18 @@ onMounted(async () => {
       const maxDim = Math.max(size.x, size.y, size.z)
       const fitScale = 2.0 / maxDim
       loadedPlaneGeo.scale(fitScale, fitScale, fitScale)
-      console.log('Geometry ready, maxDim:', maxDim, 'fitScale:', fitScale)
-    } else {
-      console.warn('No mesh found in model!')
     }
 
-    const planeConfigs = [
-      { color: 0xff6b35, scale: 1.2, speed: 0.15, radiusX: 9, radiusY: 5, offset: 0 },
-      { color: 0x4ecdc4, scale: 0.9, speed: 0.22, radiusX: 11, radiusY: 4, offset: 2 },
-      { color: 0xffd166, scale: 0.7, speed: 0.3,  radiusX: 7,  radiusY: 6, offset: 4 }
-    ]
+    const planeConfigs = isMobile
+      ? [
+          { color: 0xff6b35, scale: 1.2, speed: 0.15, radiusX: 9, radiusY: 5, offset: 0 },
+          { color: 0x4ecdc4, scale: 0.9, speed: 0.22, radiusX: 11, radiusY: 4, offset: 2 }
+        ]
+      : [
+          { color: 0xff6b35, scale: 1.2, speed: 0.15, radiusX: 9, radiusY: 5, offset: 0 },
+          { color: 0x4ecdc4, scale: 0.9, speed: 0.22, radiusX: 11, radiusY: 4, offset: 2 },
+          { color: 0xffd166, scale: 0.7, speed: 0.3,  radiusX: 7,  radiusY: 6, offset: 4 }
+        ]
 
     planeConfigs.forEach(cfg => {
       const { group, material } = createPlaneInstance(cfg.color, cfg.scale)
@@ -424,7 +455,6 @@ onMounted(async () => {
       })
     })
 
-    // Intro animation for planes
     planes.forEach((p, i) => {
       gsap.fromTo(p.group.scale, { x: 0, y: 0, z: 0 }, {
         x: 1, y: 1, z: 1, duration: 2,
@@ -433,8 +463,7 @@ onMounted(async () => {
     })
 
     emit('scene-ready')
-  }, undefined, (err) => {
-    console.warn('Failed to load plane model:', err)
+  }, undefined, () => {
     emit('scene-ready')
   })
 
@@ -442,7 +471,6 @@ onMounted(async () => {
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mousedown', onMouseDown)
 
-  // Passive gyroscope detection - no permission prompt
   initGyro()
 
   // Intro
