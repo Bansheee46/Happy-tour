@@ -35,7 +35,6 @@ const targetY = ref(0)
 
 let scene, camera, renderer, clock
 let blob, blobGeo, blobPos, blobOriginal, core, coreMat
-let orb1, orb2, orb3
 let ringsGroup, particles, pGeo, pOff, pCount
 let planes = []
 let dirLight, mouseLight
@@ -116,13 +115,6 @@ function animate() {
     r.rotation.x += 0.001 * (i + 1) * sceneState.rotSpeed
     r.rotation.y += 0.002 * (i % 2 === 0 ? 1 : -1) * sceneState.rotSpeed
   })
-
-  // Animate orbs
-  orb1.position.x = Math.sin(time * 0.3) * 8
-  orb1.position.y = Math.cos(time * 0.5) * 5
-  orb2.position.x = Math.cos(time * 0.2) * 10
-  orb2.position.z = Math.sin(time * 0.4) * 6 - 8
-  orb3.position.y = Math.sin(time * 0.6) * 7
 
   // Animate airplanes
   planes.forEach((p) => {
@@ -221,9 +213,6 @@ function openPage(pageId) {
   }
 
   if (colors.length === 3) {
-    tweenColor(orb1.material, colors[0], 2)
-    tweenColor(orb2.material, colors[1], 2)
-    tweenColor(orb3.material, colors[2], 2)
     planes.forEach((p, i) => {
       if (colors[i]) {
         tweenColor(p.material, colors[i], 2)
@@ -236,9 +225,6 @@ function openPage(pageId) {
 
 function closeAllPages() {
   gsap.to(sceneState, { waveAmp: 0.6, rotSpeed: 6.0, pSpeed: 0.15, duration: 0.8, yoyo: true, repeat: 1, ease: 'power2.inOut' })
-  tweenColor(orb1.material, '#ff6b35', 2)
-  tweenColor(orb2.material, '#4ecdc4', 2)
-  tweenColor(orb3.material, '#ffd166', 2)
   const defaults = ['#ff6b35', '#4ecdc4', '#ffd166']
   planes.forEach((p, i) => {
     tweenColor(p.material, defaults[i], 2)
@@ -284,7 +270,6 @@ onMounted(async () => {
   // Adaptive quality levels
   const blobSeg = isMobile ? 64 : 128
   const coreSeg = isMobile ? 32 : 64
-  const orbSeg = isMobile ? 16 : 32
   const ringSeg = isMobile ? 16 : 32
   const ringTube = isMobile ? 0.04 : 0.03
 
@@ -350,28 +335,6 @@ onMounted(async () => {
   }
   scene.add(ringsGroup)
 
-  // Colored orbs behind the glass blob
-  orb1 = new THREE.Mesh(
-    new THREE.SphereGeometry(3, orbSeg, orbSeg),
-    new THREE.MeshBasicMaterial({ color: 0xff6b35 })
-  )
-  orb1.position.set(-6, 4, -8)
-  scene.add(orb1)
-
-  orb2 = new THREE.Mesh(
-    new THREE.SphereGeometry(4, orbSeg, orbSeg),
-    new THREE.MeshBasicMaterial({ color: 0x4ecdc4 })
-  )
-  orb2.position.set(7, -3, -10)
-  scene.add(orb2)
-
-  orb3 = new THREE.Mesh(
-    new THREE.SphereGeometry(2, orbSeg, orbSeg),
-    new THREE.MeshBasicMaterial({ color: 0xffd166 })
-  )
-  orb3.position.set(-2, -6, -6)
-  scene.add(orb3)
-
   // Particles
   pCount = isMobile ? 300 : 800
   pGeo = new THREE.BufferGeometry()
@@ -431,16 +394,11 @@ onMounted(async () => {
       loadedPlaneGeo.scale(fitScale, fitScale, fitScale)
     }
 
-    const planeConfigs = isMobile
-      ? [
-          { color: 0xff6b35, scale: 1.2, speed: 0.15, radiusX: 9, radiusY: 5, offset: 0 },
-          { color: 0x4ecdc4, scale: 0.9, speed: 0.22, radiusX: 11, radiusY: 4, offset: 2 }
-        ]
-      : [
-          { color: 0xff6b35, scale: 1.2, speed: 0.15, radiusX: 9, radiusY: 5, offset: 0 },
-          { color: 0x4ecdc4, scale: 0.9, speed: 0.22, radiusX: 11, radiusY: 4, offset: 2 },
-          { color: 0xffd166, scale: 0.7, speed: 0.3,  radiusX: 7,  radiusY: 6, offset: 4 }
-        ]
+    const planeConfigs = [
+      { color: 0xff6b35, scale: 1.2, speed: 0.15, radiusX: 9, radiusY: 5, offset: 0 },
+      { color: 0x4ecdc4, scale: 0.9, speed: 0.22, radiusX: 11, radiusY: 4, offset: 2 },
+      { color: 0xffd166, scale: 0.7, speed: 0.3,  radiusX: 7,  radiusY: 6, offset: 4 }
+    ]
 
     planeConfigs.forEach(cfg => {
       const { group, material } = createPlaneInstance(cfg.color, cfg.scale)
